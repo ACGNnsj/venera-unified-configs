@@ -1,0 +1,30 @@
+[
+  {
+    "name": "拷贝漫画",
+    "key": "copy_manga",
+    "fileName": "copy_manga.js",
+    "version": "1.4.1",
+    "url": "https://cdn.jsdelivr.net/gh/ACGNnsj/venera-unified-configs@sources-v1/sources/copy_manga.js"
+  },
+  {
+    "name": "包子漫画",
+    "key": "baozi",
+    "fileName": "baozi.js",
+    "version": "1.2.0",
+    "url": "https://cdn.jsdelivr.net/gh/ACGNnsj/venera-unified-configs@sources-v1/sources/baozi.js"
+  },
+  {
+    "name": "禁漫天堂",
+    "key": "jm",
+    "fileName": "jm.js",
+    "version": "1.4.5",
+    "url": "https://cdn.jsdelivr.net/gh/ACGNnsj/venera-unified-configs@sources-v1/sources/jm.js"
+  },
+  {
+    "name": "hitomi.la",
+    "key": "hitomi",
+    "fileName": "hitomi.js",
+    "version": "1.1.2",
+    "url": "https://cdn.jsdelivr.net/gh/ACGNnsj/venera-unified-configs@sources-v1/sources/hitomi.js"
+  }
+]

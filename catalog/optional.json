@@ -1,0 +1,44 @@
+[
+  {
+    "name": "漫蛙吧",
+    "key": "manwaba",
+    "fileName": "manwaba.js",
+    "version": "1.4.0",
+    "url": "https://cdn.jsdelivr.net/gh/ACGNnsj/venera-unified-configs@sources-v1/sources/manwaba.js"
+  },
+  {
+    "name": "虫虫漫画",
+    "key": "warchina",
+    "fileName": "warchina.js",
+    "version": "1.0.3",
+    "url": "https://cdn.jsdelivr.net/gh/ACGNnsj/venera-unified-configs@sources-v1/sources/warchina.js"
+  },
+  {
+    "name": "漫画柜",
+    "key": "ManHuaGui",
+    "fileName": "manhuagui.js",
+    "version": "1.2.1",
+    "url": "https://cdn.jsdelivr.net/gh/ACGNnsj/venera-unified-configs@sources-v1/sources/manhuagui.js"
+  },
+  {
+    "name": "漫网",
+    "key": "manwang",
+    "fileName": "manwang.js",
+    "version": "1.0.0",
+    "url": "https://cdn.jsdelivr.net/gh/ACGNnsj/venera-unified-configs@sources-v1/sources/manwang.js"
+  },
+  {
+    "name": "漫画屋",
+    "key": "mhua5",
+    "fileName": "mhua5.js",
+    "version": "1.0.2",
+    "url": "https://cdn.jsdelivr.net/gh/ACGNnsj/venera-unified-configs@sources-v1/sources/mhua5.js"
+  },
+  {
+    "name": "酷笔漫画",
+    "key": "kubb",
+    "fileName": "kubb.js",
+    "version": "1.0.2",
+    "url": "https://cdn.jsdelivr.net/gh/ACGNnsj/venera-unified-configs@sources-v1/sources/kubb.js"
+  }
+]

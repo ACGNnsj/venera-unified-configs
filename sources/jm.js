@@ -1,0 +1,1416 @@
+class JM extends ComicSource {
+    // Note: The fields which are marked as [Optional] should be removed if not used
+
+    // name of the source
+    name = "禁漫天堂"
+
+    // unique id of the source
+    key = "jm"
+
+    version = "1.4.5"
+
+    minAppVersion = "1.5.0"
+
+    static jmVersion = "2.0.16"
+
+    static jmPkgName = "com.example.app"
+
+    // update url（jsdelivr 从本仓库 assets/sources/jm.js 取，用于检查更新）
+    url = "https://cdn.jsdelivr.net/gh/ACGNnsj/venera-unified-configs@sources-v1/sources/jm.js"
+
+    dailyCheckInInProgress = false
+
+    // 2026-10-01 实测（/categories/filter 真实 API，多次中位数）：
+    //   cdnutc.me 682ms ✅  cdngwc.net 1.7s ⚠️  cdngwc.cc 2.0s ⚠️  cdngwc.club 7.2s ❌慢
+    //   cdnhjk.net TLS 握手超时 ❌（官方动态列表却把它排第一！）
+    //   cdnsha.org / cdnntr.cc 公共 DNS 已删记录（本地靠缓存苟活，随时死），移除。
+    // 动态刷新成功时会覆盖此表（坏域会被 overwriteApiDomains 自动排到最后），
+    // 但拉取失败/关闭开关的用户走的就是这份兜底。
+    static fallbackServers = [
+        "www.cdnutc.me",
+        "www.cdngwc.net",
+        "www.cdngwc.cc",
+        "www.cdnhjk.net",
+    ];
+
+    // 已知坏域：动态刷新拿到列表后把这些排到最后，避免 apiDomain 默认 '1' 命中死线路
+    // （官方 newsvr 列表把 cdnhjk 排第一，而它 TLS 握手超时——盲信官方顺序会整源挂掉）
+    static knownBadServers = ["www.cdnhjk.net"];
+
+    static imageUrl = "https://cdn-msp.jmapinodeudzn.net"
+
+    static ua = "Mozilla/5.0 (Linux; Android 10; K; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/130.0.0.0 Mobile Safari/537.36"
+
+    get ua() {
+        return JM.ua;
+    }
+
+    get baseUrl() {
+        // 修复（2026-09-01）：apiDomains 没有静态初值，全靠 refreshApiDomains 动态赋值，
+        //   刷新链路任何一环失败（newsvr 拉取失败 / 用户关闭开关）这里就是 undefined[index] TypeError，
+        //   整个源不可用。兜底到 fallbackServers（已按实测速度重排，cdnsha 最快在首位）。
+        let domains = JM.apiDomains || JM.fallbackServers
+        let index = parseInt(this.loadSetting('apiDomain')) - 1
+        return `https://${domains[index]}`
+    }
+
+    get imageUrl() {
+        return JM.imageUrl
+    }
+
+    overwriteApiDomains(domains) {
+        if (domains.length != 0) {
+            // 修复（2026-10-01）：官方 newsvr 列表把 TLS 握手超时的坏域排在第一位，
+            // 而 apiDomain 设置默认 '1' 直接命中它 → 整源挂。
+            // 拿到列表后把已知坏域挪到最后，健康线路保持官方相对顺序。
+            let good = []
+            let bad = []
+            for (let d of domains) {
+                if (JM.knownBadServers.includes(d)) bad.push(d)
+                else good.push(d)
+            }
+            JM.apiDomains = good.concat(bad)
+        }
+    }
+
+    overwriteImgUrl(url) {
+        if (url.length != 0) JM.imageUrl = url
+    }
+
+    isNum(str) {
+        return /^\d+$/.test(str)
+    }
+
+    get baseHeaders() {
+        return {
+            "Accept": "*/*",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Connection": "keep-alive",
+            "Origin": "https://localhost",
+            "Referer": "https://localhost/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "cross-site",
+            "X-Requested-With": JM.jmPkgName,
+        }
+    }
+
+    getApiHeaders(time) {
+        if (this.loadSetting("dailyCheckInTask")) {
+            this.dailyCheckIn(true)
+        }
+        const jmAuthKey = "18comicAPPContent"
+        let token = Convert.md5(Convert.encodeUtf8(`${time}${jmAuthKey}`))
+
+        return {
+            ...this.baseHeaders,
+            "Authorization": "Bearer",
+            "Sec-Fetch-Storage-Access": "active",
+            "token": Convert.hexEncode(token),
+            "tokenparam": `${time},${JM.jmVersion}`,
+            "User-Agent": this.ua,
+        }
+    }
+
+    getImgHeaders() {
+        return {
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Connection": "keep-alive",
+            "Referer": "https://localhost/",
+            "Sec-Fetch-Dest": "image",
+            "Sec-Fetch-Mode": "no-cors",
+            "Sec-Fetch-Site": "cross-site",
+            "Sec-Fetch-Storage-Access": "active",
+            "User-Agent": this.ua,
+            "X-Requested-With": JM.jmPkgName,
+        }
+    }
+
+    getCoverUrl(id) {
+        return `${this.imageUrl}/media/albums/${id}_3x4.jpg`
+    }
+
+    getImageUrl(id, imageName) {
+        return `${this.imageUrl}/media/photos/${id}/${imageName}`
+    }
+
+    getAvatarUrl(imageName) {
+        return `${this.imageUrl}/media/users/${imageName}`
+    }
+
+    async init() {
+        if (this.loadSetting('refreshDomainsOnStart')) await this.refreshApiDomains(false)
+        this.refreshImgUrl(false)
+    }
+
+    /**
+     *
+     * @param showConfirmDialog {boolean}
+     */
+    async refreshApiDomains(showConfirmDialog) {
+        let url = "https://rup4a04-c02.tos-cn-hongkong.bytepluses.com/newsvr-2025.txt"
+        let domainSecret = "diosfjckwpqpdfjkvnqQjsik"
+        let title = ""
+        let message = ""
+        let servers = []
+        let domains = []
+        let res = null;
+        try {
+            res = await fetch(url, { headers: this.baseHeaders });
+        } catch (error) {
+            res = null;
+        }
+        if (res && res.status === 200) {
+            let data = this.convertData(await res.text(), domainSecret)
+            let json = JSON.parse(data)
+            // 2026-10-01：优先用 jm3_Server（5 条线路，含实测最快的 cdnutc.me），
+            // 老的 Server 字段只有 4 条且把坏域 cdnhjk 排第一
+            if (json["jm3_Server"]) {
+                title = "Update Success"
+                message = "\n"
+                servers = json["jm3_Server"].map((x) => x[0]).slice(0, 5)
+            } else if (json["Server"]) {
+                title = "Update Success"
+                message = "\n"
+                servers = json["Server"].slice(0, 4)
+            }
+        }
+        if (servers.length === 0) {
+            title = "Update Failed"
+            message = `Using built-in domains:\n\n`
+            servers = JM.fallbackServers
+        }
+        for (let i = 0; i < servers.length; i++) {
+            message = message + `線路${i + 1}:  ${servers[i]}\n\n`
+            domains.push(servers[i])
+        }
+        if (showConfirmDialog) {
+            UI.showDialog(
+                title,
+                message,
+                [
+                    {
+                        text: "Cancel",
+                        callback: () => {}
+                    },
+                    {
+                        text: "Apply",
+                        callback: () => {
+                            this.overwriteApiDomains(domains)
+                            this.refreshImgUrl(true)
+                        }
+                    }
+                ]
+            )
+        } else {
+            this.overwriteApiDomains(domains)
+        }
+    }
+
+    /**
+     *
+     * @param showMessage {boolean}
+     */
+    async refreshImgUrl(showMessage) {
+        let index = this.loadSetting('imageStream')
+        let res = await this.get(
+            `${this.baseUrl}/setting?app_img_shunt=${index}&express=`
+        )
+        let setting = JSON.parse(res)
+        if (setting["img_host"]) {
+            if (showMessage) {
+                UI.showMessage(`Image Stream ${index}:\n${setting["img_host"]}`)
+            }
+            this.overwriteImgUrl(setting["img_host"])
+        }
+    }
+
+    /**
+     *
+     * @param comic {object}
+     * @returns {Comic}
+     */
+    parseComic(comic) {
+        let id = comic.id.toString()
+        let author = comic.author
+        let title = comic.name
+        let description = comic.description ?? ""
+        let cover = this.getCoverUrl(id)
+        let tags =[]
+        if(comic["category"]["title"]) {
+            tags.push(comic["category"]["title"])
+        }
+        if(comic["category_sub"]["title"]) {
+            tags.push(comic["category_sub"]["title"])
+        }
+        return new Comic({
+            id: id,
+            title: title,
+            subTitle: author,
+            cover: cover,
+            tags: tags,
+            description: description
+        })
+    }
+
+    /**
+     *
+     * @param input {string}
+     * @param secret {string}
+     * @returns {string}
+     */
+    convertData(input, secret) {  
+        let key = Convert.encodeUtf8(Convert.hexEncode(Convert.md5(Convert.encodeUtf8(secret))))
+        let data = Convert.decodeBase64(input)
+        let decrypted = Convert.decryptAesEcb(data, key)
+        let res = Convert.decodeUtf8(decrypted)
+        let start = 0
+        while (start < res.length && res[start] !== '{' && res[start] !== '[') {
+            start++
+        }
+        let end = res.length - 1
+        while(end > start && res[end] !== '}' && res[end] !== ']') {
+            end--
+        }
+        return res.substring(start, end + 1)
+    }
+
+    /**
+     *
+     * @param url {string}
+     * @returns {Promise<string>}
+     */
+    async get(url) {
+        let time = Math.floor(Date.now() / 1000)
+        let kJmSecret = "185Hcomic3PAPP7R"
+        let res = await Network.get(url, this.getApiHeaders(time))
+        if(res.status !== 200) {
+            if(res.status === 401) {
+                let json = JSON.parse(res.body)
+                let message = json.errorMsg
+                if(message === "請先登入會員" && this.isLogged) {
+                    throw 'Login expired'
+                }
+                throw message ?? 'Invalid Status Code: ' + res.status
+            }
+            throw 'Invalid Status Code: ' + res.status
+        }
+        let json = JSON.parse(res.body)
+        let data = json.data
+        if(typeof data !== 'string') {
+            throw 'Invalid Data'
+        }
+        return this.convertData(data, `${time}${kJmSecret}`)
+    }
+
+    async post(url, body) {
+        let time = Math.floor(Date.now() / 1000)
+        let kJmSecret = "185Hcomic3PAPP7R"
+        let res = await Network.post(url, {
+            ...this.getApiHeaders(time),
+            "Content-Type": "application/x-www-form-urlencoded"
+        }, body)
+        if(res.status !== 200) {
+            if(res.status === 401) {
+                let json = JSON.parse(res.body)
+                let message = json.errorMsg
+                if(message === "請先登入會員" && this.isLogged) {
+                    throw 'Login expired'
+                }
+                throw message ?? 'Invalid Status Code: ' + res.status
+            }
+            throw 'Invalid Status Code: ' + res.status
+        }
+        let json = JSON.parse(res.body)
+        let data = json.data
+        if(typeof data !== 'string') {
+            throw 'Invalid Data'
+        }
+        return this.convertData(data, `${time}${kJmSecret}`)
+    }
+
+    async dailyCheckIn(isTask = false) {
+        if (this.dailyCheckInInProgress) return
+        this.dailyCheckInInProgress = true
+        const throwError = (msg) => {
+            UI.showMessage(msg)
+            throw msg
+        }
+        try {
+            const lastCheckInDate = this.loadData("lastCheckInDate")
+            const today = new Date().toLocaleDateString('zh-CN')
+            if (lastCheckInDate && lastCheckInDate === today) {
+                if (isTask) return
+                throwError("Already checked in today")
+            }
+            if (!this.isLogged) {
+                if (isTask) return
+                throwError("Please login to check-in")
+            }
+            const uid = this.loadData("uid")
+            if (!uid) {
+                throwError("Invalid uid, please login again")
+            }
+            const checkRecordRes = await this.get(`${this.baseUrl}/daily?user_id=${uid}`)
+            const checkRecord = JSON.parse(checkRecordRes)
+            if (!('daily_id' in checkRecord)) {
+                throwError("Invalid daily_id, check-in failed")
+            }
+            const daily_id = checkRecord.daily_id
+            const checkResultRes = await this.post(`${this.baseUrl}/daily_chk`, `user_id=${uid}&daily_id=${daily_id}`)
+            const checkResult = JSON.parse(checkResultRes)
+            if (!checkResult.msg) {
+                throwError("Invalid check-in result, check-in failed")
+            }
+            UI.showMessage(checkResult.msg)
+            this.saveData("lastCheckInDate", today)
+        } finally {
+            this.dailyCheckInInProgress = false
+        }
+    }
+
+    // ---------- 节点延迟测试 ----------
+    async testApiNode(domain) {
+        let url = `https://${domain}/promote?page=1`
+        let time = Math.floor(Date.now() / 1000)
+        let start = Date.now()
+        try {
+            let res = await Promise.race([
+                Network.get(url, this.getApiHeaders(time)),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))
+            ])
+            if (res.status !== 200) {
+                return { success: false, latency: 0 }
+            }
+            return { success: true, latency: Date.now() - start }
+        } catch (e) {
+            return { success: false, latency: 0 }
+        }
+    }
+
+    /**
+     * 把 select 类设置项写回书源设置存储。
+     *
+     * 背景：venera 未给书源开放 saveSetting —— Dart 侧只有 load_setting（读），
+     * 且 save_data 显式拦截 `dataKey === 'setting'`（单数）。但书源设置实际存在
+     * `data['settings']`（复数）里，设置页读写的也是同一个键（comic_source_page.dart）。
+     *
+     * 所以这里走 saveData('settings', ...) 整对象读-改-写：
+     * 改完 baseUrl / refreshImgUrl 立即生效，设置页下拉也会同步显示（重进设置页可见）。
+     *
+     * 为避开跨语言对象往返时键枚举的不确定性，不读回旧对象，而是从 this.settings
+     * 声明重建全部标量项（跳过 callback 类），保证不弄丢用户已改过的其它设置。
+     */
+    _applySetting(key, value) {
+        let next = {}
+        if (this.settings) {
+            for (let k of Object.keys(this.settings)) {
+                let def = this.settings[k]
+                if (!def || def.type === "callback") continue
+                try {
+                    let v = this.loadSetting(k)
+                    if (v !== undefined && v !== null) next[k] = v
+                } catch (e) { }
+            }
+        }
+        next[key] = value
+        this.saveData("settings", next)
+    }
+
+    async optimizeNodes() {
+        UI.showMessage("正在测试节点延迟...")
+        let domains = JM.apiDomains || JM.fallbackServers
+        let promises = domains.map((domain, i) =>
+            this.testApiNode(domain).then(r => ({ index: i + 1, domain: domain, ...r }))
+        )
+        let results = await Promise.all(promises)
+        results.sort((a, b) => {
+            if (!a.success && !b.success) return 0
+            if (!a.success) return 1
+            if (!b.success) return -1
+            return a.latency - b.latency
+        })
+
+        if (!results.length || !results[0].success) {
+            UI.showMessage("所有节点均连接失败，请检查网络后重试")
+            return
+        }
+
+        // 测完直接给出可选列表，选中即写回 apiDomain 设置并生效
+        let current = parseInt(this.loadSetting('apiDomain'))
+        let options = results.map(r => {
+            let status = r.success ? `${r.latency}ms` : "连接失败"
+            let cur = r.index === current ? "【当前】" : ""
+            let fast = (r === results[0] && r.success) ? "  👈最快" : ""
+            return `线路${r.index}${cur}  ${r.domain}  ${status}${fast}`
+        })
+        let initial = results.findIndex(r => r.index === current)
+        if (initial < 0) initial = 0
+
+        let sel = await UI.showSelectDialog("节点延迟测试 - 选择要使用的线路", options, initial)
+        if (sel === null || sel === undefined) return
+        let chosen = results[sel]
+        if (!chosen || !chosen.success) {
+            UI.showMessage("该线路连接失败，未切换")
+            return
+        }
+        this._applySetting('apiDomain', String(chosen.index))
+        UI.showMessage(`已切换到 线路${chosen.index}：${chosen.domain}`)
+    }
+
+    // ---------- 图片分流测速 ----------
+    async _fetchCdnUrl(index) {
+        try {
+            let res = await this.get(`${this.baseUrl}/setting?app_img_shunt=${index}&express=`)
+            let setting = JSON.parse(res)
+            return setting["img_host"] || null
+        } catch (e) {
+            return null
+        }
+    }
+
+    async _downloadImage(url, timeoutMs) {
+        try {
+            // 用 Range 只取前 256KB，避免下载整张大图拖慢测速；
+            // 支持 200/206 两种返回（部分 CDN 忽略 Range 返回完整图）。
+            let headers = { ...this.getImgHeaders(), "Range": "bytes=0-262143" }
+            let res = await Promise.race([
+                Network.fetchBytes("GET", url, headers),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
+            ])
+            if (res.status !== 200 && res.status !== 206) return null
+            let body = res.body
+            if (body instanceof Uint8Array) return body
+            if (body && typeof body.byteLength === "number") return new Uint8Array(body)
+            return new Uint8Array(0)
+        } catch (e) {
+            return null
+        }
+    }
+
+    async _testSingleDomain(cdnUrl, imgBase, imgNames, timeoutMs) {
+        let start = Date.now()
+        let totalSize = 0
+        let anySuccess = false
+        let downloads = imgNames.map(imgName =>
+            this._downloadImage(`${cdnUrl}${imgBase}${imgName}`, timeoutMs)
+        )
+        let results = await Promise.all(downloads)
+        for (let data of results) {
+            if (data !== null) {
+                totalSize += data.byteLength
+                anySuccess = true
+            }
+        }
+        if (!anySuccess || totalSize === 0) {
+            return { speed: 0, size: 0, success: false }
+        }
+        let elapsed = (Date.now() - start) / 1000
+        return {
+            speed: (totalSize / 1024 / 1024) / elapsed,
+            size: totalSize,
+            success: true
+        }
+    }
+
+    _formatSpeed(speedMBps) {
+        if (speedMBps >= 1) {
+            return `${speedMBps.toFixed(2)} MB/s`
+        }
+        return `${(speedMBps * 1024).toFixed(1)} KB/s`
+    }
+
+    _formatSize(bytes) {
+        if (bytes >= 1024 * 1024) {
+            return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+        }
+        return `${(bytes / 1024).toFixed(1)} KB`
+    }
+
+    async testImageSpeed() {
+        const MAX_OPTIONS = 5
+        const TEST_IMG_BASE = "/media/photos/209654/"
+        const TEST_IMG_NAMES = ["00001.webp", "00002.webp", "00003.webp"]
+        const IMG_TIMEOUT_MS = 5000
+
+        UI.showMessage("正在获取分流列表...")
+        let fetchTasks = []
+        for (let i = 1; i <= MAX_OPTIONS; i++) {
+            fetchTasks.push(
+                this._fetchCdnUrl(i).then(url => ({ option: i, url: url }))
+            )
+        }
+        let cdnResults = await Promise.all(fetchTasks)
+
+        UI.showMessage("正在测速...")
+        let testTasks = cdnResults.map(r => {
+            if (!r.url) return Promise.resolve({ speed: 0, size: 0, success: false })
+            return this._testSingleDomain(r.url, TEST_IMG_BASE, TEST_IMG_NAMES, IMG_TIMEOUT_MS)
+                .then(t => ({ option: r.option, url: r.url, ...t }))
+        })
+        let results = await Promise.all(testTasks)
+
+        results.sort((a, b) => {
+            if (!a.success && !b.success) return 0
+            if (!a.success) return 1
+            if (!b.success) return -1
+            return b.speed - a.speed
+        })
+
+        if (results.every(r => !r.success)) {
+            UI.showMessage("所有分流均连接失败，请检查网络后重试")
+            return
+        }
+
+        // 测完直接给出可选列表，选中即写回 imageStream 设置并立即切换当前图床
+        let current = this.loadSetting('imageStream')
+        let options = results.map(r => {
+            let status = r.success
+                ? `${this._formatSpeed(r.speed)} (${this._formatSize(r.size)})`
+                : "连接失败"
+            let cur = String(r.option) === String(current) ? "【当前】" : ""
+            let fast = (r === results[0] && r.success) ? "  👈最快" : ""
+            return `选项${r.option}${cur}  ${status}${fast}  ${r.url || "获取失败"}`
+        })
+        let initial = results.findIndex(r => String(r.option) === String(current))
+        if (initial < 0) initial = 0
+
+        let sel = await UI.showSelectDialog("图片分流测速 - 选择要使用的分流", options, initial)
+        if (sel === null || sel === undefined) return
+        let chosen = results[sel]
+        if (!chosen || !chosen.success) {
+            UI.showMessage("该分流连接失败，未切换")
+            return
+        }
+        this._applySetting('imageStream', String(chosen.option))
+        // 测速时已拿到该分流的图床地址，直接覆盖当前 imageUrl，无需再请求 /setting
+        if (chosen.url) this.overwriteImgUrl(chosen.url)
+        UI.showMessage(`已切换到 选项${chosen.option}：${chosen.url}`)
+    }
+
+    // [Optional] account related
+    account = {
+        /**
+         * [Optional] login with account and password, return any value to indicate success
+         * @param account {string}
+         * @param pwd {string}
+         * @returns {Promise<any>}
+         */
+        login: async (account, pwd) => {
+            let time = Math.floor(Date.now() / 1000)
+            let res = await this.post(
+                `${this.baseUrl}/login`,
+                `username=${encodeURIComponent(account)}&password=${encodeURIComponent(pwd)}`
+            )
+            let json = JSON.parse(res)
+            if (json.uid) {
+                this.saveData("uid", json.uid)
+            }
+            return "ok"
+        },
+
+        /**
+         * logout function, clear account related data
+         */
+        logout: () => {
+            for (let url of (JM.apiDomains || JM.fallbackServers)) {
+                Network.deleteCookies(url)
+            }
+        },
+
+        // {string?} - register url
+        registerWebsite: null
+    }
+
+    // explore page list
+    explore = [
+        {
+            // title of the page.
+            // title is used to identify the page, it should be unique
+            title: "禁漫天堂",
+
+            /// multiPartPage or multiPageComicList or mixed
+            type: "multiPartPage",
+
+            /**
+             * load function
+             * @param page {number | null} - page number, null for `singlePageWithMultiPart` type
+             * @returns {{}}
+             * - for `multiPartPage` type, return [{title: string, comics: Comic[], viewMore: string?}]
+             * - for `multiPageComicList` type, for each page(1-based), return {comics: Comic[], maxPage: number}
+             * - for `mixed` type, use param `page` as index. for each index(0-based), return {data: [], maxPage: number?}, data is an array contains Comic[] or {title: string, comics: Comic[], viewMore: string?}
+             */
+            load: async (page) => {
+                let res = await this.get(`${this.baseUrl}/promote?page=0`)
+                let result = []
+
+                for(let e of JSON.parse(res)) {
+                    let title = e["title"]
+                    let type = e.type
+                    let id = e.id.toString()
+                    if (type === 'category_id') {
+                        id = e.slug
+                    }
+                    if (['library', 'novels'].includes(type)) {
+                        continue
+                    }
+                    let comics = e.content.map((e) => this.parseComic(e))
+                    result.push({
+                        title: e.title,
+                        comics: comics,
+                        viewMore: `category:${title}@${id}`
+                    })
+                }
+
+                return result
+            },
+        }
+    ]
+
+    // categories
+    category = {
+        /// title of the category page, used to identify the page, it should be unique
+        title: "禁漫天堂",
+        parts: [
+            {
+                name: "每週必看",
+                type: "fixed",
+                categories: ["每週必看"],
+                itemType: "category",
+            },
+            {
+                name: "成人A漫",
+                type: "fixed",
+                categories: ["最新A漫", "同人", "單本", "短篇", "其他類", "韓漫", "美漫", "Cosplay", "3D", "禁漫漢化組"],
+                itemType: "category",
+                categoryParams: [
+                    "0",
+                    "doujin",
+                    "single",
+                    "short",
+                    "another",
+                    "hanman",
+                    "meiman",
+                    "another_cosplay",
+                    "3D",
+                    "禁漫漢化組"
+                ],
+            },
+            {
+                name: "主題A漫",
+                type: "fixed",
+                categories: [
+                    '無修正',
+                    '劇情向',
+                    '青年漫',
+                    '校服',
+                    '純愛',
+                    '人妻',
+                    '教師',
+                    '百合',
+                    'Yaoi',
+                    '性轉',
+                    'NTR',
+                    '女裝',
+                    '癡女',
+                    '全彩',
+                    '女性向',
+                    '完結',
+                    '純愛',
+                    '禁漫漢化組'
+                ],
+                itemType: "search",
+            },
+            {
+                name: "角色扮演",
+                type: "fixed",
+                categories: [
+                    '御姐',
+                    '熟女',
+                    '巨乳',
+                    '貧乳',
+                    '女性支配',
+                    '教師',
+                    '女僕',
+                    '護士',
+                    '泳裝',
+                    '眼鏡',
+                    '連褲襪',
+                    '其他制服',
+                    '兔女郎'
+                ],
+                itemType: "search",
+            },
+            {
+                name: "特殊PLAY",
+                type: "fixed",
+                categories: [
+                    '群交',
+                    '足交',
+                    '束縛',
+                    '肛交',
+                    '阿黑顏',
+                    '藥物',
+                    '扶他',
+                    '調教',
+                    '野外露出',
+                    '催眠',
+                    '自慰',
+                    '觸手',
+                    '獸交',
+                    '亞人',
+                    '怪物女孩',
+                    '皮物',
+                    'ryona',
+                    '騎大車'
+                ],
+                itemType: "search",
+            },
+            {
+                name: "特殊PLAY",
+                type: "fixed",
+                categories: ['CG', '重口', '獵奇', '非H', '血腥暴力', '站長推薦'],
+                itemType: "search",
+            },
+        ],
+        // enable ranking page
+        enableRankingPage: true,
+    }
+
+    /// category comic loading related
+    categoryComics = {
+        /**
+         * load comics of a category
+         * @param category {string} - category name
+         * @param param {string?} - category param
+         * @param options {string[]} - options from optionList
+         * @param page {number} - page number
+         * @returns {Promise<{comics: Comic[], maxPage: number}>}
+         */
+        load: async (category, param, options, page) => {
+            if (category !== "每週必看") {
+                param ??= category
+                param = encodeURIComponent(param)
+                let res = await this.get(`${this.baseUrl}/categories/filter?o=${options[0]}&c=${param}&page=${page}`)
+                let data = JSON.parse(res)
+                let total = data.total
+                let maxPage = Math.ceil(total / 80)
+                let comics = data.content.map((e) => this.parseComic(e))
+                return {
+                    comics: comics,
+                    maxPage: maxPage
+                }
+            } else {
+                let res = await this.get(`${this.baseUrl}/week/filter?id=${options[0]}&type=${options[1]}&page=0`)
+                let data = JSON.parse(res)
+                let comics = data.list.map((e) => this.parseComic(e))
+                return {
+                    comics: comics,
+                    maxPage: 1
+                }
+            }
+        },
+        /**
+         * [Optional] load options dynamically. If `optionList` is provided, this will be ignored.
+         * @param category {string}
+         * @param param {string?}
+         * @return {Promise<{options: string[], label?: string}[]>} - return a list of option group, each group contains a list of options
+         */
+        optionLoader: async (category, param) => {
+            if (category !== "每週必看") {
+                return [
+                    {
+                        label: "排序",
+                        // For a single option, use `-` to separate the value and text, left for value, right for text
+                        options: [
+                            "mr-最新",
+                            "mv-總排行",
+                            "mv_m-月排行",
+                            "mv_w-周排行",
+                            "mv_t-日排行",
+                            "mp-最多圖片",
+                            "tf-最多喜歡",
+                        ],
+                    }
+                ]
+            } else {
+                let res = await this.get(`${this.baseUrl}/week`)
+                let data = JSON.parse(res)
+                let options = []
+                for (let e of data["categories"]) {
+                    options.push(`${e["id"]}-${e["time"]}`)
+                }
+                return [
+                    {
+                        label: "時間",
+                        options: options,
+                    },
+                    {
+                        label: "類型",
+                        options: [
+                          "manga-日漫",
+                          "hanman-韓漫",
+                          "another-其他",
+                        ]
+                    }
+                ]
+            }
+        },
+        ranking: {
+            // For a single option, use `-` to separate the value and text, left for value, right for text
+            options: [
+                "mv-總排行",
+                "mv_m-月排行",
+                "mv_w-周排行",
+                "mv_t-日排行",
+            ],
+            /**
+             * load ranking comics
+             * @param option {string} - option from optionList
+             * @param page {number} - page number
+             * @returns {Promise<{comics: Comic[], maxPage: number}>}
+             */
+            load: async (option, page) => {
+                return this.categoryComics.load("總排行", "0", [option], page)
+            }
+        }
+    }
+
+    /// search related
+    search = {
+        /**
+         * load search result
+         * @param keyword {string}
+         * @param options {(string | null)[]} - options from optionList
+         * @param page {number}
+         * @returns {Promise<{comics: Comic[], maxPage: number}>}
+         */
+        load: async (keyword, options, page) => {
+            keyword = keyword.trim()
+            keyword = encodeURIComponent(keyword)
+            keyword = keyword.replace(/%20/g, '+')
+            let url = `${this.baseUrl}/search?search_query=${keyword}&o=${options[0]}`
+            if(page > 1) {
+                url += `&page=${page}`
+            }
+            let res = await this.get(url)
+            let data = JSON.parse(res)
+            let total = data.total
+            let maxPage = Math.ceil(total / 80)
+            let comics = data.content.map((e) => this.parseComic(e))
+            return {
+                comics: comics,
+                maxPage: maxPage
+            }
+        },
+
+        /**
+         * [Optional] 精确标签搜索接口（配合 App 搜索层 `tag:` 语法）。
+         * App 检测到搜索词含 `tag:xxx` 且书源实现了本方法时走此实现层（JM main_tag=3 官方标签通道）；
+         * 未实现的书源自动退回「全文搜索 + App 客户端 tag 过滤」。
+         * @param tag {string} - 标签名（来自 `tag:` 语法或详情页 tag 点击）
+         * @param keyword {string} - 剩余普通关键词（已剥离特殊语法，可为空串）
+         * @param options {string[]} - options from optionList
+         * @param page {number}
+         * @returns {Promise<{comics: Comic[], maxPage: number}>}
+         */
+        tagSearch: async (tag, keyword, options, page) => {
+            // main_tag=3 = 标签精确搜索；keyword 非空时以「+关键词」追加（JM 语法：必须包含）
+            let rest = keyword.trim()
+            let query = rest.length > 0 ? `${tag} +${rest}` : tag
+            query = encodeURIComponent(query)
+            query = query.replace(/%20/g, '+')
+            let url = `${this.baseUrl}/search?search_query=${query}&main_tag=3&o=mr`
+            if(page > 1) {
+                url += `&page=${page}`
+            }
+            let res = await this.get(url)
+            let data = JSON.parse(res)
+            let total = data.total
+            let maxPage = Math.ceil(total / 80)
+            let comics = data.content.map((e) => this.parseComic(e))
+            return {
+                comics: comics,
+                maxPage: maxPage
+            }
+        },
+
+        // provide options for search
+        optionList: [
+            {
+                type: "select",
+                // For a single option, use `-` to separate the value and text, left for value, right for text
+                options: [
+                    "mr-最新",
+                    "mv-總排行",
+                    "mv_m-月排行",
+                    "mv_w-周排行",
+                    "mv_t-日排行",
+                    "mp-最多圖片",
+                    "tf-最多喜歡",
+                ],
+                // option label
+                label: "排序",
+            }
+        ],
+    }
+
+    // favorite related
+    favorites = {
+        multiFolder: true,
+        /**
+         * add or delete favorite.
+         * throw `Login expired` to indicate login expired, App will automatically re-login and re-add/delete favorite
+         * @param comicId {string}
+         * @param folderId {string}
+         * @param isAdding {boolean} - true for add, false for delete
+         * @param favoriteId {string?} - [Comic.favoriteId]
+         * @returns {Promise<any>} - return any value to indicate success
+         */
+        addOrDelFavorite: async (comicId, folderId, isAdding, favoriteId) => {
+            if (isAdding) {
+                await this.post(`${this.baseUrl}/favorite`, `aid=${comicId}`)
+                await this.post(`${this.baseUrl}/favorite_folder`, `type=move&folder_id=${folderId}&aid=${comicId}`)
+            } else {
+                await this.post(`${this.baseUrl}/favorite`, `aid=${comicId}`)
+            }
+        },
+        /**
+         * load favorite folders.
+         * throw `Login expired` to indicate login expired, App will automatically re-login retry.
+         * if comicId is not null, return favorite folders which contains the comic.
+         * @param comicId {string?}
+         * @returns {Promise<{folders: {[p: string]: string}, favorited: string[]}>} - `folders` is a map of folder id to folder name, `favorited` is a list of folder id which contains the comic
+         */
+        loadFolders: async (comicId) => {
+            let res = await this.get(`${this.baseUrl}/favorite`)
+            let folders = {
+                "0": this.translate("All")
+            }
+            let json = JSON.parse(res)
+            for (let e of json.folder_list) {
+                folders[e.FID.toString()] = e.name
+            }
+            return {
+                folders: folders,
+                favorited: []
+            }
+        },
+        /**
+         * add a folder
+         * @param name {string}
+         * @returns {Promise<any>} - return any value to indicate success
+         */
+        addFolder: async (name) => {
+            await this.post(`${this.baseUrl}/favorite_folder`, `type=add&folder_name=${name}`)
+        },
+        /**
+         * delete a folder
+         * @param folderId {string}
+         * @returns {Promise<void>} - return any value to indicate success
+         */
+        deleteFolder: async (folderId) => {
+            await this.post(`${this.baseUrl}/favorite_folder`, `type=del&folder_id=${folderId}`)
+        },
+        /**
+         * load comics in a folder
+         * throw `Login expired` to indicate login expired, App will automatically re-login retry.
+         * @param page {number}
+         * @param folder {string?} - folder id, null for non-multi-folder
+         * @returns {Promise<{comics: Comic[], maxPage: number}>}
+         */
+        loadComics: async (page, folder) => {
+            let order = this.loadSetting('favoriteOrder')
+            let res = await this.get(`${this.baseUrl}/favorite?folder_id=${folder}&page=${page}&o=${order}`)
+            let json = JSON.parse(res)
+            let total = json.total
+            let maxPage = Math.ceil(total / 20)
+            let comics = json.list.map((e) => this.parseComic(e))
+            return {
+                comics: comics,
+                maxPage: maxPage
+            }
+        },
+        singleFolderForSingleComic: true,
+    }
+
+    /// single comic related
+    comic = {
+        /**
+         * load comic info
+         * @param id {string}
+         * @returns {Promise<ComicDetails>}
+         */
+        loadInfo: async (id) => {
+            if (id.startsWith('jm')) {
+                id = id.substring(2)
+            }
+            let res = await this.get(`${this.baseUrl}/album?id=${id}`);
+            let data = JSON.parse(res)
+            let author = data.author ?? []
+            let works = data.works ?? []
+            let actors = data.actors ?? []
+            let chapters = new Map()
+            let series = (data.series ?? []).sort((a, b) => a.sort - b.sort)
+            for(let e of series) {
+                let title = e.name ?? ''
+                title = title.trim()
+                if(title.length === 0) {
+                    title = `第${e["sort"]}話`
+                }
+                let id = e.id.toString()
+                chapters.set(id, title)
+            }
+            if(chapters.size === 0) {
+                chapters.set(id, '第1話')
+            }
+            let tags = data.tags ?? []
+            let related = data["related_list"].map((e) => new Comic({
+                id: e.id.toString(),
+                title: e.name,
+                subtitle: e.author ?? "",
+                cover: this.getCoverUrl(e.id),
+                description: e.description ?? ""
+            }))
+            let updateTimeStamp = data["addtime"];
+            let date = new Date(updateTimeStamp * 1000)
+            let updateDate = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+
+            return new ComicDetails({
+                title: data.name,
+                cover: this.getCoverUrl(id),
+                description: data.description,
+                likesCount: Number(data.likes),
+                chapters: chapters,
+                tags: {
+                    "Author": author,
+                    "Tag": tags,
+                    "Work": works,
+                    "Actor": actors,
+                    "View": data.total_views ? [data.total_views] : [],
+                },
+                recommend: related,
+                isFavorite: data.is_favorite ?? false,
+                isLiked: data.liked ?? false,
+                updateTime: updateDate,
+            })
+        },
+        /**
+         * load images of a chapter
+         * @param comicId {string}
+         * @param epId {string?}
+         * @returns {Promise<{images: string[]}>}
+         */
+        loadEp: async (comicId, epId) => {
+            let res = await this.get(`${this.baseUrl}/chapter?id=${epId}`);
+            let data = JSON.parse(res)
+            let images = data.images.map((e) => this.getImageUrl(epId, e))
+            return {
+                images: images
+            }
+        },
+        /**
+         * [Optional] provide configs for an image loading
+         * @param url
+         * @param comicId
+         * @param epId
+         * @returns {{} | Promise<{}>}
+         */
+        onImageLoad: (url, comicId, epId) => {
+            const scrambleId = 220980
+            let pictureName = "";
+            for (let i = url.length - 1; i >= 0; i--) {
+                if (url[i] === '/') {
+                    pictureName = url.substring(i + 1, url.length - 5);
+                    break;
+                }
+            }
+            epId = Number(epId);
+            let num = 0
+            if(epId < scrambleId) {
+                num = 0
+            } else if (epId < 268850) {
+                num = 10
+            } else if (epId > 421926) {
+                let str = epId.toString() + pictureName
+                let bytes = Convert.encodeUtf8(str)
+                let hash = Convert.md5(bytes)
+                let hashStr = Convert.hexEncode(hash)
+                let charCode = hashStr.charCodeAt(hashStr.length-1)
+                let remainder = charCode % 8
+                num = remainder * 2 + 2
+            } else {
+                let str = epId.toString() + pictureName
+                let bytes = Convert.encodeUtf8(str)
+                let hash = Convert.md5(bytes)
+                let hashStr = Convert.hexEncode(hash)
+                let charCode = hashStr.charCodeAt(hashStr.length-1)
+                let remainder = charCode % 10
+                num = remainder * 2 + 2
+            }
+            if (num <= 1) {
+                return {}
+            }
+            return {
+                headers: this.getImgHeaders(),
+                // gif 图片不需要修改
+                modifyImage: url.endsWith(".gif") ? null : `
+                    let modifyImage = (image) => {
+                        const num = ${num}
+                        let blockSize = Math.floor(image.height / num)
+                        let remainder = image.height % num
+                        let blocks = []
+                        for(let i = 0; i < num; i++) {
+                            let start = i * blockSize
+                            let end = start + blockSize + (i !== num - 1 ? 0 : remainder)
+                            blocks.push({
+                                start: start,
+                                end: end
+                            })
+                        }
+                        let res = Image.empty(image.width, image.height)
+                        let y = 0
+                        for(let i = blocks.length - 1; i >= 0; i--) {
+                            let block = blocks[i]
+                            let currentHeight = block.end - block.start
+                            res.fillImageRangeAt(0, y, image, 0, block.start, image.width, currentHeight)
+                            y += currentHeight
+                        }
+                        return res
+                    }
+                `,
+            }
+        },
+        /**
+         * [Optional] provide configs for a thumbnail loading
+         * @param url {string}
+         * @returns {{}}
+         */
+        onThumbnailLoad: (url) => {
+            return {
+                headers: this.getImgHeaders()
+            }
+        },
+        /**
+         * [Optional] like or unlike a comic
+         * @param id {string}
+         * @param isLike {boolean} - true for like, false for unlike
+         * @returns {Promise<void>}
+         */
+        likeComic: async (id, isLike) => {
+            let res = await this.post(`${this.baseUrl}/like`, `id=${id}`)
+            let json = JSON.parse(res)
+            if (json.code !== 200 || json.status === 'error') {
+                throw json.msg ?? 'Failed to like/unlike comic'
+            }
+            return "ok"
+        },
+        /**
+         * [Optional] load comments
+         * @param comicId {string}
+         * @param subId {string?} - ComicDetails.subId
+         * @param page {number}
+         * @param replyTo {string?} - commentId to reply, not null when reply to a comment
+         * @returns {Promise<{comments: Comment[], maxPage: number?}>}
+         */
+        loadComments: async (comicId, subId, page, replyTo) => {
+            let res = await this.get(`${this.baseUrl}/forum?mode=manhua&aid=${comicId}&page=${page}`)
+            let json = JSON.parse(res)
+            const pageSize = 6
+            return {
+                comments: json.list.map((e) => new Comment({
+                    avatar: this.getAvatarUrl(e.photo),
+                    userName: e.username,
+                    time: e.addtime,
+                    content: e.content.substring(e.content.indexOf('>') + 1, e.content.lastIndexOf('<')),
+                })),
+                maxPage: Math.floor(json.total / pageSize) + 1
+            }
+        },
+        /**
+         * [Optional] send a comment, return any value to indicate success
+         * @param comicId {string}
+         * @param subId {string?} - ComicDetails.subId
+         * @param content {string}
+         * @param replyTo {string?} - commentId to reply, not null when reply to a comment
+         * @returns {Promise<any>}
+         */
+        sendComment: async (comicId, subId, content, replyTo) => {
+            let res = await this.post(`${this.baseUrl}/comment`, `aid=${comicId}&comment=${encodeURIComponent(content)}&status=undefined`)
+            let json = JSON.parse(res)
+            if (json.status === "fail") {
+                throw json.msg ?? 'Failed to send comment'
+            }
+            return "ok"
+        },
+        // {string?} - regex string, used to identify comic id from user input
+        idMatch: "^(\\d+|jm\\d+)$",
+        /**
+         * [Optional] Handle tag click event
+         * @param namespace {string}
+         * @param tag {string}
+         * @returns {{action: string, keyword: string}}
+         */
+        onClickTag: (namespace, tag) => {
+            // 统一走 App 搜索层 `tag:` 语法通道：
+            // 书源实现 search.tagSearch → 精确标签搜索；未实现 → 自动退回全文搜索+客户端过滤
+            return {
+                action: 'search',
+                keyword: 'tag:' + tag,
+            }
+        },
+    }
+
+
+    /*
+    [Optional] settings related
+    Use this.loadSetting to load setting
+    ```
+    let setting1Value = this.loadSetting('setting1')
+    console.log(setting1Value)
+    ```
+     */
+    settings = {
+        refreshDomains: {
+            title: "Refresh Domain List",
+            type: "callback",
+            buttonText: "Refresh",
+            callback: () => this.refreshApiDomains(true)
+        },
+        refreshDomainsOnStart: {
+            title: "Refresh Domain List on Startup",
+            type: "switch",
+            default: true,
+        },
+        apiDomain: {
+            title: "Api Domain",
+            type: "select",
+            options: [
+                {
+                    value: '1',
+                },
+                {
+                    value: '2',
+                },
+                {
+                    value: '3',
+                },
+                {
+                    value: '4',
+                },
+                {
+                    value: '5',
+                },
+            ],
+            default: "1",
+        },
+        imageStream: {
+            title: "Image Stream",
+            type: "select",
+            options: [
+                {
+                    value: '1',
+                },
+                {
+                    value: '2',
+                },
+                {
+                    value: '3',
+                },
+                {
+                    value: '4',
+                },
+            ],
+            default: "1",
+        },
+        optimizeNodes: {
+            title: "Optimize Nodes",
+            type: "callback",
+            buttonText: "Start Test",
+            callback: () => this.optimizeNodes()
+        },
+        imageSpeedTest: {
+            title: "Image Speed Test",
+            type: "callback",
+            buttonText: "Start Test",
+            callback: () => this.testImageSpeed()
+        },
+        favoriteOrder: {
+            title: "Favorite Order",
+            type: "select",
+            options: [
+                {
+                    value: 'mr',
+                    text: 'Add Time',
+                },
+                {
+                    value: 'mp',
+                    text: 'Update Time',
+                }
+            ],
+            default: 'mr'
+        },
+        dailyCheckInTask: {
+            title: "Daily Check-in Task",
+            type: "switch",
+            default: false
+        },
+        dailyCheckIn: {
+            title: "Manual Check-In",
+            type: "callback",
+            buttonText: "Check-In",
+            callback: () => this.dailyCheckIn()
+        },
+    }
+
+    // [Optional] translations for the strings in this config
+    translation = {
+        'zh_CN': {
+            'Refresh Domain List': '刷新域名列表',
+            'Refresh': '刷新',
+            'Refresh Domain List on Startup': '启动时刷新域名列表',
+            'Api Domain': 'Api域名',
+            'Image Stream': '图片分流',
+            'Favorite Order': '收藏夹排序',
+            'Optimize Nodes': '节点优选',
+            'Image Speed Test': '图片分流测速',
+            'Start Test': '开始测速',
+            'Daily Check-in Task': '每日自动签到',
+            'Manual Check-In': '手动签到',
+            'Check-In': '签到',
+            'Add Time': '添加时间',
+            'Update Time': '更新时间',
+            'All': '全部',
+            'Author': '作者',
+            'Tag': '标签',
+            'Work': '作品',
+            'Actor': '角色',
+            'View': '浏览量',
+        },
+        'zh_TW': {
+            'Refresh Domain List': '刷新域名列表',
+            'Refresh': '刷新',
+            'Refresh Domain List on Startup': '啟動時刷新域名列表',
+            'Api Domain': 'Api域名',
+            'Image Stream': '圖片分流',
+            'Optimize Nodes': '節點優選',
+            'Image Speed Test': '圖片分流測速',
+            'Start Test': '開始測速',
+            'Favorite Order': '收藏夾排序',
+            'Daily Check-in Task': '每日自動簽到',
+            'Manual Check-In': '手動簽到',
+            'Check-In': '簽到',
+            'Add Time': '添加時間',
+            'Update Time': '更新時間',
+            'All': '全部',
+            'Author': '作者',
+            'Tag': '標籤',
+            'Work': '作品',
+            'Actor': '角色',
+            'View': '瀏覽量',
+        },
+    }
+}
